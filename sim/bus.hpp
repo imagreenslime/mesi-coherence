@@ -2,6 +2,7 @@
 #define BUS_HPP
 
 #include <cstdint>
+#include "config.hpp"
 
 enum class BusReqType {
     BusRd, // read miss (either shared or exclusive)
@@ -15,10 +16,11 @@ struct BusRequest {
     uint32_t addr;
 };
 
-struct BusGrant {
-    BusRequest req;
+struct BusGrant { 
+    BusRequest req; 
     bool shared;
-    bool flush; 
+    bool flush;
+    uint8_t data[LINE_SIZE];
 };
 
 class Bus {

@@ -18,12 +18,15 @@ class System {
 
     private:
 
+        void assert_mesi(uint32_t addr);
+
         void step();
 
         uint64_t cycle;
 
         int num_cores;
-
+        int rr_next;
+        
         std::vector<Core*> cores;
         std::vector<Cache*> caches;
         Bus* bus;

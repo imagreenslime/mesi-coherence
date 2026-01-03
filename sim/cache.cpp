@@ -40,7 +40,6 @@ bool Cache::accept_request(Core* core, const MemOp& op){
             wait_cycles = 1;
             printf("Load Hit at Cache %i\n", cache_id);
         } else {
-
             waiting_for_bus = true;
             wait_cycles = 0;
             BusRequest req{cache_id, BusReqType::BusRd, op.addr};
@@ -61,8 +60,7 @@ bool Cache::accept_request(Core* core, const MemOp& op){
                 waiting_for_bus = false;
                 wait_cycles = 1;
             } else if (line.state == LineState::S){
-
-                waiting_for_bus = false;
+                waiting_for_bus = true;
                 wait_cycles = 0;
 
                 // invalidate others
@@ -130,8 +128,12 @@ SnoopResult Cache::snoop_and_update(const BusRequest& req){
     if (line.state == LineState::I || line.tag != t) return result;
 
     result.had_line = true;
-    result.was_dirty = line.state == LineState::M;
    
+    if (line.state == LineState::M) {
+        result.was_dirty = true;
+        result.data = line.data.data();  // <-- THIS IS THE MISSING LINE
+    }
+
     switch (req.type){
         case (BusReqType::BusRd):
             // if read
@@ -141,6 +143,7 @@ SnoopResult Cache::snoop_and_update(const BusRequest& req){
             } else if (line.state == LineState::M){
                 line.state = LineState::S;
             }
+            
             break;
         case (BusReqType::BusRdX):
             // if write
@@ -211,4 +214,21 @@ void Cache::print_cache(){
 }
 int Cache::id(){
     return cache_id;
+}
+
+char Cache::state_for(uint32_t addr){
+    uint32_t idx = index(addr);
+    uint32_t t = tag(addr);
+    CacheLine& line = lines[idx];
+
+    if (line.state == LineState::I || line.tag != t)
+        return 'I';
+
+    switch (line.state){
+        case LineState::S: return 'S';
+        case LineState::E: return 'E';
+        case LineState::M: return 'M';
+        case LineState::I: return 'I';
+    }
+    return '?';
 }

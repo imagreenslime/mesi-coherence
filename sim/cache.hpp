@@ -9,6 +9,7 @@
 struct SnoopResult {
     bool had_line = false;   // line existed in S/E/M
     bool was_dirty = false;  // line was in M
+    const uint8_t* data = nullptr; 
 };
 
 
@@ -26,6 +27,7 @@ public:
     void on_bus_grant(const BusGrant& grant);
 
     void print_cache();
+    char state_for(uint32_t addr);
 
     int id();
 private:
