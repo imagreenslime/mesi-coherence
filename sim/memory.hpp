@@ -13,6 +13,8 @@ public:
     void read_line(uint32_t addr, uint8_t* out);
     void write_line(uint32_t addr, const uint8_t* in);
 
+    void print_cache();
+    
 private:
     std::vector<uint8_t> data;
 };

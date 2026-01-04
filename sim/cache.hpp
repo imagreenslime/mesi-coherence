@@ -12,25 +12,30 @@ struct SnoopResult {
     const uint8_t* data = nullptr; 
 };
 
+class Memory;
+
+
+
 
 class Cache {
 public:
-    Cache(int id, Bus* bus_);
+    Cache(int id, Bus* bus_, Memory* mem_);
 
     void step();
 
     bool accept_request(Core* core, const MemOp& op);
-
     void on_bus_event(const BusRequest& req);
-
     SnoopResult snoop_and_update(const BusRequest& req);
     void on_bus_grant(const BusGrant& grant);
 
-    void print_cache();
-    char state_for(uint32_t addr);
 
+    void print_cache();
+
+    char state_for(uint32_t addr);
     int id();
 private:
+
+    Memory* memory;
 
     Bus* bus;
     bool waiting_for_bus;

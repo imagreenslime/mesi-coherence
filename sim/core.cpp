@@ -6,14 +6,11 @@ Core::Core(int id)
     : core_id(id), pc(0), stalled(false)
 {
 if (core_id == 0) {
-    trace.push_back({OpType::STORE, 0xA000, 3});
+    trace.push_back({OpType::STORE, 0xA400, 8});
+    trace.push_back({OpType::LOAD,  0xB400, 0}); // conflict → eviction
 } else {
-    trace.push_back({OpType::STORE, 0xA000, 2});
+    trace.push_back({OpType::LOAD,  0xA400, 8});
 }
-
-
-
-
 
 }
 

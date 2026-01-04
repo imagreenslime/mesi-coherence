@@ -15,7 +15,6 @@ bool Bus::request(const BusRequest& req){
 bool Bus::step(BusGrant& granted){
     if (!busy) return false;
 
-    printf("step by bus\n");
     granted.req = current;
     granted.flush = false;
     granted.shared = false;

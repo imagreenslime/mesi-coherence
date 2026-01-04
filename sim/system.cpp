@@ -17,7 +17,7 @@ System::System(int num_cores_)
 
     for (int i = 0; i < num_cores; i++){
         cores.push_back(new Core(i));
-        caches.push_back(new Cache(i, bus));
+        caches.push_back(new Cache(i, bus, memory));
     }
     printf("loading run\n");
 }
@@ -72,7 +72,6 @@ void System::step(){
                 // if dirty, data must be supplied
                 if (res.was_dirty && !supplied) {
                     memcpy(grant.data, res.data, LINE_SIZE);
-                
                     supplied = true;
                     grant.flush = true;
                     memory->write_line(grant.req.addr, grant.data);
@@ -81,8 +80,8 @@ void System::step(){
             
         }
         if (!supplied) {
-        memory->read_line(grant.req.addr, grant.data);
-        // grant.flush stays false
+            memory->read_line(grant.req.addr, grant.data);
+            // grant.flush stays false
         }
         assert_mesi(grant.req.addr);
         caches[grant.req.cache_id] -> on_bus_grant(grant);

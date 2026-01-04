@@ -1,12 +1,14 @@
 //cache.cpp
 
 #include "cache.hpp"
+#include "memory.hpp"
 
 #include <iostream>
 
-Cache::Cache(int id, Bus* bus_)
+Cache::Cache(int id, Bus* bus_, Memory* mem_)
     : cache_id(id),
       bus(bus_),
+      memory(mem_),
       waiting_for_bus(false),
       busy(false),
       wait_cycles(0),
@@ -71,14 +73,8 @@ bool Cache::accept_request(Core* core, const MemOp& op){
                     return false;
                 }
             }
-
-            waiting_for_bus = false;
-            wait_cycles = 1;
         } else {
-        
             // BusRdx
-            waiting_for_bus = true;
-            wait_cycles = 0;
 
             BusRequest req{cache_id, BusReqType::BusRdX, op.addr};
             if (!bus->request(req)) {
@@ -86,6 +82,8 @@ bool Cache::accept_request(Core* core, const MemOp& op){
                 busy = false;
                 return false;
             }
+            waiting_for_bus = true;
+            wait_cycles = 0;
         }
     }
 
@@ -131,7 +129,20 @@ SnoopResult Cache::snoop_and_update(const BusRequest& req){
    
     if (line.state == LineState::M) {
         result.was_dirty = true;
+        
         result.data = line.data.data();  // <-- THIS IS THE MISSING LINE
+        
+        printf("valid=%d tag=0x%08x state=", line.valid, line.tag);
+            switch (line.state) {
+                case LineState::I: printf("I"); break;
+                case LineState::S: printf("S"); break;
+                case LineState::E: printf("E"); break;
+                case LineState::M: printf("M"); break;
+            }
+            printf(" data=");
+            for (int j = 0; j < LINE_SIZE; j++) {
+                printf("%u ", line.data[j]);
+            }
     }
 
     switch (req.type){
@@ -171,22 +182,28 @@ void Cache::on_bus_grant(const BusGrant& grant){
 
     uint32_t idx = index(grant.req.addr);
     CacheLine& line = lines[idx];
-
     line.valid = true;
     line.tag = tag(grant.req.addr);
 
+    if (grant.req.type == BusReqType::BusRd || grant.req.type == BusReqType::BusRdX) {
+        memcpy(line.data.data(), grant.data, LINE_SIZE);
+    }
+
     if (grant.req.type == BusReqType::BusRd){
+        printf("bus rd\n");
         line.state = grant.shared ? LineState::S : LineState::E;
     }
     if (grant.req.type == BusReqType::BusRdX){
+        uint32_t off = current_op.addr % LINE_SIZE;
+        line.data[off] = (uint8_t)current_op.data;
+        printf("bus rdx\n");
         line.state = LineState::M;
     }
     if (grant.req.type == BusReqType::BusUpgr){ 
+        printf("bus upgrade\n");
         // already has S
         line.state = LineState::M;
     }
-
-    for (int i = 0; i < LINE_SIZE; i++) line.data[i] = 0;
 }
 
 
@@ -194,21 +211,21 @@ void Cache::print_cache(){
     printf("Cache %d:\n", cache_id);
     for (int i = 0; i < NUM_LINES; i++) {
         CacheLine& line = lines[i];
-        if (line.tag > 0){
 
+        if (line.valid){
         
-        printf("  Line %2d: valid=%d tag=0x%08x state=", i, line.valid, line.tag);
-        switch (line.state) {
-            case LineState::I: printf("I"); break;
-            case LineState::S: printf("S"); break;
-            case LineState::E: printf("E"); break;
-            case LineState::M: printf("M"); break;
-        }
-        printf(" data=");
-        for (int j = 0; j < LINE_SIZE; j++) {
-            printf("%02x ", line.data[j]);
-        }
-        printf("\n");
+            printf("  Line %2d: valid=%d tag=0x%08x state=", i, line.valid, line.tag);
+            switch (line.state) {
+                case LineState::I: printf("I"); break;
+                case LineState::S: printf("S"); break;
+                case LineState::E: printf("E"); break;
+                case LineState::M: printf("M"); break;
+            }
+            printf(" data=");
+            for (int j = 0; j < LINE_SIZE; j++) {
+                printf("%u ", line.data[j]);
+            }
+            printf("\n");
         }
     }
 }
