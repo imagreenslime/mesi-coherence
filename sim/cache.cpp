@@ -182,28 +182,71 @@ void Cache::on_bus_grant(const BusGrant& grant){
 
     uint32_t idx = index(grant.req.addr);
     CacheLine& line = lines[idx];
-    line.valid = true;
-    line.tag = tag(grant.req.addr);
+    uint32_t new_tag = tag(grant.req.addr);
 
-    if (grant.req.type == BusReqType::BusRd || grant.req.type == BusReqType::BusRdX) {
+    // HANDLE EVICTION
+    bool RD_or_RDX = (grant.req.type == BusReqType::BusRd) || (grant.req.type == BusReqType::BusRdX);
+
+    if (RD_or_RDX) {
+        if (line.valid && line.tag != new_tag){
+            if (line.state == LineState::M){
+                constexpr uint32_t OFFSET_BITS = 5; // log2(32)
+                constexpr uint32_t INDEX_BITS  = 5; // log2(32)
+
+                uint32_t evict_addr =
+                (line.tag << (INDEX_BITS + OFFSET_BITS)) |
+                (idx      << OFFSET_BITS);
+
+                printf("[Cache %d] EVICT: idx=%u old_tag=0x%x state=M -> writeback addr=0x%x\n",
+                   cache_id, idx, line.tag, evict_addr);
+
+                memory->write_line(evict_addr, line.data.data());
+
+            } else {
+                printf("[Cache %d] EVICT: idx=%u old_tag=0x%x state!=M -> no writeback\n",
+                    cache_id, idx, line.tag);
+            }
+
+            // invalidate old line
+
+            line.valid = false;
+            line.state = LineState::I;
+        }
+    }
+
+    // HANDLE WRITEBACK
+    
+    if (RD_or_RDX) {
         memcpy(line.data.data(), grant.data, LINE_SIZE);
     }
 
+    // HANDLE LINE STATE
     if (grant.req.type == BusReqType::BusRd){
         printf("bus rd\n");
         line.state = grant.shared ? LineState::S : LineState::E;
     }
     if (grant.req.type == BusReqType::BusRdX){
+
         uint32_t off = current_op.addr % LINE_SIZE;
         line.data[off] = (uint8_t)current_op.data;
+
         printf("bus rdx\n");
         line.state = LineState::M;
     }
     if (grant.req.type == BusReqType::BusUpgr){ 
         printf("bus upgrade\n");
         // already has S
+        if (!(line.valid && line.tag == new_tag && line.state == LineState::S)) {
+        printf("[Cache %d] ERROR: BusUpgr but line not in S (valid=%d tag=0x%x new_tag=0x%x state=%d)\n",
+               cache_id, line.valid, line.tag, new_tag, (int)line.state);
+        exit(1);
+    }
         line.state = LineState::M;
     }
+
+    // make line available
+    line.valid = true;
+    line.tag = new_tag;
 }
 
 
