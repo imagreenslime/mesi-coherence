@@ -1,4 +1,5 @@
 //system.cpp
+#include "log.hpp"
 #include "system.hpp"
 #include "core.cpp"
 #include "cache.cpp"
@@ -12,17 +13,16 @@ System::System(int num_cores_)
     : cycle(0), num_cores(num_cores_), rr_next(0)
     {
     memory = new Memory(1 << 20);
-    
     bus = new Bus();
 
     for (int i = 0; i < num_cores; i++){
         cores.push_back(new Core(i));
         caches.push_back(new Cache(i, bus, memory));
     }
-    printf("loading run\n");
 }
 
 void System::run(uint32_t max_cycles){
+
     for (cycle = 0; cycle < max_cycles; cycle++){
         step();
     }
@@ -33,7 +33,7 @@ void System::run(uint32_t max_cycles){
 
 void System::step(){
     
-    printf("\nCycle: %i\n\n", cycle);
+    // printf("\nCycle: %i\n\n", cycle);
     // advance cores
     for (auto* core : cores) {
         core->step();
@@ -94,6 +94,17 @@ void System::step(){
     
 }
 
+
+Core* System::get_core(int id) {
+    assert(id >= 0 && id < cores.size());
+    return cores[id];
+}
+
+Cache* System::get_cache(int id) {
+    assert(id >= 0 && id < caches.size());
+    return caches[id];
+}
+
 void System::assert_mesi(uint32_t addr){
     int m_count = 0;
     int e_count = 0;
@@ -115,4 +126,5 @@ void System::assert_mesi(uint32_t addr){
         printf("MESI VIOLATION: multiple E at addr 0x%x\n", addr);
         exit(1);
     }
+    
 }

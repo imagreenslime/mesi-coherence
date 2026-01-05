@@ -14,9 +14,6 @@ struct SnoopResult {
 
 class Memory;
 
-
-
-
 class Cache {
 public:
     Cache(int id, Bus* bus_, Memory* mem_);
@@ -51,12 +48,11 @@ private:
     };
 
     struct CacheLine {
-        bool valid;
         uint32_t tag;
         LineState state;
         std::array<uint8_t, LINE_SIZE> data;
 
-        CacheLine() : valid(false), tag(0), state(LineState::I) {}
+        CacheLine() : tag(0), state(LineState::I) {}
     };
 
     std::array<CacheLine, NUM_LINES> lines;

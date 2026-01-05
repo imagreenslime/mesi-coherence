@@ -1,9 +1,12 @@
 #include <iostream>
 #include "system.cpp"
 #include "system.hpp"
+#include "tests.cpp"
+
 
 int main(){
-    System sys(2);
-    sys.run(15);
+
+    run_all_tests();
+
     return 0;
 }

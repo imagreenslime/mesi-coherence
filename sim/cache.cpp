@@ -22,11 +22,10 @@ bool Cache::accept_request(Core* core, const MemOp& op){
     uint32_t t = tag(op.addr);
     CacheLine& line = lines[idx];
 
-    printf("[Cache %d] op=%s addr=0x%x idx=%u t=%u | line.valid=%d line.tag=%u waiting=%d busy=%d\n",
+    printf("[Cache %d] op=%s addr=0x%x idx=%u t=%u | line.tag=%u waiting=%d busy=%d\n",
         cache_id,
         (op.type == OpType::LOAD ? "LD" : "ST"),
-        op.addr, idx, t,
-        line.valid, line.tag,
+        op.addr, idx, t, line.tag,
         (int)waiting_for_bus, (int)busy);
 
     bool hit = (line.state != LineState::I) && (line.tag == t);
@@ -124,25 +123,10 @@ SnoopResult Cache::snoop_and_update(const BusRequest& req){
     CacheLine& line = lines[idx];
 
     if (line.state == LineState::I || line.tag != t) return result;
-
-    result.had_line = true;
-   
+        result.had_line = true;
     if (line.state == LineState::M) {
         result.was_dirty = true;
-        
-        result.data = line.data.data();  // <-- THIS IS THE MISSING LINE
-        
-        printf("valid=%d tag=0x%08x state=", line.valid, line.tag);
-            switch (line.state) {
-                case LineState::I: printf("I"); break;
-                case LineState::S: printf("S"); break;
-                case LineState::E: printf("E"); break;
-                case LineState::M: printf("M"); break;
-            }
-            printf(" data=");
-            for (int j = 0; j < LINE_SIZE; j++) {
-                printf("%u ", line.data[j]);
-            }
+        result.data = line.data.data();  
     }
 
     switch (req.type){
@@ -160,14 +144,12 @@ SnoopResult Cache::snoop_and_update(const BusRequest& req){
             // if write
             printf("req type: BusRDX\n");
             line.state = LineState::I;
-            line.valid = false;
             break;
         case (BusReqType::BusUpgr):
             printf("req type: BusUPGR\n");
             // telling you to upgrade
             if (line.state == LineState::S){
                 line.state = LineState::I;
-                line.valid = false;
             }
             break;
     }
@@ -187,33 +169,31 @@ void Cache::on_bus_grant(const BusGrant& grant){
     // HANDLE EVICTION
     bool RD_or_RDX = (grant.req.type == BusReqType::BusRd) || (grant.req.type == BusReqType::BusRdX);
 
-    if (RD_or_RDX) {
-        if (line.valid && line.tag != new_tag){
-            if (line.state == LineState::M){
-                constexpr uint32_t OFFSET_BITS = 5; // log2(32)
-                constexpr uint32_t INDEX_BITS  = 5; // log2(32)
 
-                uint32_t evict_addr =
+    if (line.state != LineState::I && line.tag != new_tag){
+        if (line.state == LineState::M){
+            constexpr uint32_t OFFSET_BITS = 5; // log2(32)
+            constexpr uint32_t INDEX_BITS  = 5; // log2(32)
+            uint32_t evict_addr =
                 (line.tag << (INDEX_BITS + OFFSET_BITS)) |
                 (idx      << OFFSET_BITS);
 
-                printf("[Cache %d] EVICT: idx=%u old_tag=0x%x state=M -> writeback addr=0x%x\n",
-                   cache_id, idx, line.tag, evict_addr);
+            printf("[Cache %d] EVICT: idx=%u old_tag=0x%x state=M -> writeback addr=0x%x\n",
+                cache_id, idx, line.tag, evict_addr);
 
-                memory->write_line(evict_addr, line.data.data());
+            memory->write_line(evict_addr, line.data.data());
 
-            } else {
-                printf("[Cache %d] EVICT: idx=%u old_tag=0x%x state!=M -> no writeback\n",
-                    cache_id, idx, line.tag);
-            }
-
-            // invalidate old line
-
-            line.valid = false;
-            line.state = LineState::I;
+        } else {
+            printf("[Cache %d] EVICT: idx=%u old_tag=0x%x state!=M -> no writeback\n",
+                cache_id, idx, line.tag);
         }
-    }
 
+        // invalidate old line
+
+        line.state = LineState::I;
+    }
+    
+    
     // HANDLE WRITEBACK
     
     if (RD_or_RDX) {
@@ -222,42 +202,40 @@ void Cache::on_bus_grant(const BusGrant& grant){
 
     // HANDLE LINE STATE
     if (grant.req.type == BusReqType::BusRd){
-        printf("bus rd\n");
+        printf("[Cache %d] recieves BusRd\n", cache_id);
         line.state = grant.shared ? LineState::S : LineState::E;
     }
     if (grant.req.type == BusReqType::BusRdX){
 
         uint32_t off = current_op.addr % LINE_SIZE;
         line.data[off] = (uint8_t)current_op.data;
-
-        printf("bus rdx\n");
+        printf("[Cache %d] recieves BusRdx\n", cache_id);
+  
         line.state = LineState::M;
     }
     if (grant.req.type == BusReqType::BusUpgr){ 
-        printf("bus upgrade\n");
+        printf("[Cache %d] recieves BusUpgr\n", cache_id);
         // already has S
-        if (!(line.valid && line.tag == new_tag && line.state == LineState::S)) {
-        printf("[Cache %d] ERROR: BusUpgr but line not in S (valid=%d tag=0x%x new_tag=0x%x state=%d)\n",
-               cache_id, line.valid, line.tag, new_tag, (int)line.state);
-        exit(1);
-    }
+        if (!(line.tag == new_tag && line.state == LineState::S)) {
+            printf("[Cache %d] ERROR: BusUpgr but line not in S (tag=0x%x new_tag=0x%x state=%d)\n", cache_id, line.tag, new_tag, (int)line.state);
+            exit(1);
+        }
         line.state = LineState::M;
     }
-
     // make line available
-    line.valid = true;
     line.tag = new_tag;
 }
 
 
+// HELPER COMMANDS
 void Cache::print_cache(){
     printf("Cache %d:\n", cache_id);
     for (int i = 0; i < NUM_LINES; i++) {
         CacheLine& line = lines[i];
 
-        if (line.valid){
+        if (line.state != LineState::I){
         
-            printf("  Line %2d: valid=%d tag=0x%08x state=", i, line.valid, line.tag);
+            printf("  Line %2d: tag=0x%08x state=", i, line.tag);
             switch (line.state) {
                 case LineState::I: printf("I"); break;
                 case LineState::S: printf("S"); break;
@@ -275,7 +253,6 @@ void Cache::print_cache(){
 int Cache::id(){
     return cache_id;
 }
-
 char Cache::state_for(uint32_t addr){
     uint32_t idx = index(addr);
     uint32_t t = tag(addr);

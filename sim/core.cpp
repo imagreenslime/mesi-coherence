@@ -1,23 +1,26 @@
 // core.cpp
 #include "core.hpp"
 #include <iostream>
-
+#include "log.hpp"
 Core::Core(int id)
     : core_id(id), pc(0), stalled(false)
-{
-if (core_id == 0) {
-    trace.push_back({OpType::STORE, 0xA400, 5});
-    trace.push_back({OpType::LOAD,  0xB400, 0}); // evict S
-} else {
-    trace.push_back({OpType::LOAD,  0xA400, 0}); // forces M → S
+{}
+
+void Core::clear_trace() {
+    trace.clear();
+    pc = 0;
+    stalled = false;
 }
 
+void Core::add_op(OpType type, uint32_t addr, uint32_t data) {
+    trace.push_back({type, addr, data});
 }
 
 void Core::step(){
     if (stalled) return;
 
     if (pc >= trace.size()) return;
+
     MemOp op = trace[pc];
 }
 

@@ -19,6 +19,9 @@ class Core {
     public:
         Core(int id);
 
+        void clear_trace();
+        void add_op(OpType type, uint32_t addr, uint32_t data = 0);
+
         void step();
         void notify_complete(uint32_t load_data = 0);
 
