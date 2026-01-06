@@ -32,6 +32,10 @@ class Core {
         void stall();
         bool is_stalled() const;
 
+        uint32_t last_load_addr  = 0;
+        uint32_t last_load_value = 0;
+        bool     has_load_value  = false;
+
     private:
         int core_id;
 

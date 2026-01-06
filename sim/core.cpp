@@ -43,6 +43,9 @@ bool Core::is_stalled() const {
 void Core::notify_complete(uint32_t load_data){
     if (pc < trace.size()) {
         if (trace[pc].type == OpType::LOAD) {
+            last_load_addr  = trace[pc].addr;
+            last_load_value = load_data;
+            has_load_value  = true;
             printf("Core: %i, LOAD complete, data: %d\n", core_id, load_data);
         } else {
             printf("Core: %i, STORE complete, data: %d\n", core_id, load_data);

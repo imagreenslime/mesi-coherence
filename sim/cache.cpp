@@ -2,7 +2,7 @@
 
 #include "cache.hpp"
 #include "memory.hpp"
-
+#include "log.hpp"
 #include <iostream>
 
 Cache::Cache(int id, Bus* bus_, Memory* mem_)
@@ -220,6 +220,9 @@ void Cache::on_bus_grant(const BusGrant& grant){
             printf("[Cache %d] ERROR: BusUpgr but line not in S (tag=0x%x new_tag=0x%x state=%d)\n", cache_id, line.tag, new_tag, (int)line.state);
             exit(1);
         }
+        
+        uint32_t off = current_op.addr % LINE_SIZE;
+        line.data[off] = (uint8_t)current_op.data;
         line.state = LineState::M;
     }
     // make line available
