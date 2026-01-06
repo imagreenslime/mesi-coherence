@@ -1,4 +1,4 @@
-//cache.cpp
+// cache.cpp
 
 #include "cache.hpp"
 #include "memory.hpp"
@@ -15,6 +15,8 @@ Cache::Cache(int id, Bus* bus_, Memory* mem_)
       owner_core(nullptr)
 {}
 
+
+// accept line from bus
 bool Cache::accept_request(Core* core, const MemOp& op){
     if (busy) return false;
 
@@ -34,7 +36,10 @@ bool Cache::accept_request(Core* core, const MemOp& op){
     busy = true;
     owner_core = core;
     current_op = op;
-    
+    // if hit, run as usual
+    // if miss & load -> BusRD
+    // if hit & store & line=S -> BusUpgrade
+    // if miss & store -> BusRdX
     if (op.type == OpType::LOAD){
         if (hit){
             waiting_for_bus = false;
@@ -114,6 +119,7 @@ void Cache::step(){
     }
 }
 
+// other caches snoop load/store address
 SnoopResult Cache::snoop_and_update(const BusRequest& req){
     SnoopResult result;
     if (req.cache_id == cache_id) return result;
@@ -156,6 +162,7 @@ SnoopResult Cache::snoop_and_update(const BusRequest& req){
     return result;
 }
 
+// after other caches snoop, target cache acts
 void Cache::on_bus_grant(const BusGrant& grant){
     if (grant.req.cache_id != cache_id) return;
 
@@ -220,7 +227,6 @@ void Cache::on_bus_grant(const BusGrant& grant){
             printf("[Cache %d] ERROR: BusUpgr but line not in S (tag=0x%x new_tag=0x%x state=%d)\n", cache_id, line.tag, new_tag, (int)line.state);
             exit(1);
         }
-        
         uint32_t off = current_op.addr % LINE_SIZE;
         line.data[off] = (uint8_t)current_op.data;
         line.state = LineState::M;

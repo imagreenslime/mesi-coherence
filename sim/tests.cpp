@@ -896,6 +896,241 @@ void test29_upgrade_invalidation_value_timing() {
     printf("[PASS] test29_upgrade_invalidation_value_timing\n");
 }
 
+// Tier 5: Hard adversarial + timing-sensitive tests
+
+static void run_load_check(System& sys, int cid, uint32_t addr, int expected, int cycles=400) {
+    auto* c = sys.get_core(cid);
+    c->add_op(OpType::LOAD, addr);
+    sys.run(cycles);
+    assert(c->has_load_value);
+    assert(c->last_load_value == expected);
+}
+void test30_six_core_single_line_store_storm_with_immediate_global_reads() {
+    QUIET = true;
+
+    const int N = 6;
+    System sys(N);
+    for (int i = 0; i < N; i++) sys.get_core(i)->clear_trace();
+
+    uint32_t A = 0x50000;
+
+    int v = 1;
+    for (int r = 0; r < 18; r++) {
+        int writer = r % N;
+        sys.get_core(writer)->add_op(OpType::STORE, A, v);
+        for (int k = 0; k < N; k++) if (k != writer) sys.get_core(k)->add_op(OpType::LOAD, A);
+
+        sys.run(900);
+
+        for (int k = 0; k < N; k++) run_load_check(sys, k, A, v, 450);
+        assert_line_invariants(sys, A, N);
+
+        v += 7;
+    }
+
+    QUIET = false;
+    printf("[PASS] test30_six_core_single_line_store_storm_with_immediate_global_reads\n");
+}
+void test31_three_way_upgrade_race_last_writer_wins_no_transient_dual_M() {
+    QUIET = true;
+
+    System sys(3);
+    auto* c0 = sys.get_core(0);
+    auto* c1 = sys.get_core(1);
+    auto* c2 = sys.get_core(2);
+
+    uint32_t A = 0x51000;
+
+    c0->clear_trace();
+    c1->clear_trace();
+    c2->clear_trace();
+
+    c0->add_op(OpType::LOAD, A);
+    c1->add_op(OpType::LOAD, A);
+    c2->add_op(OpType::LOAD, A);
+
+    sys.run(600);
+    assert_line_invariants(sys, A, 3);
+
+    c0->add_op(OpType::STORE, A, 11);
+    c1->add_op(OpType::STORE, A, 22);
+    c2->add_op(OpType::STORE, A, 33);
+
+    sys.run(2000);
+
+    int mcount = 0;
+    for (int i = 0; i < 3; i++) if (sys.get_cache(i)->state_for(A) == 'M') mcount++;
+    assert(mcount == 1);
+    assert_line_invariants(sys, A, 3);
+
+    run_load_check(sys, 0, A, 33, 600);
+    run_load_check(sys, 1, A, 33, 600);
+    run_load_check(sys, 2, A, 33, 600);
+
+    QUIET = false;
+    printf("[PASS] test31_three_way_upgrade_race_last_writer_wins_no_transient_dual_M\n");
+}
+void test32_dirty_eviction_while_other_core_requests_same_line_store() {
+    QUIET = true;
+
+    System sys(2);
+    auto* c0 = sys.get_core(0);
+    auto* c1 = sys.get_core(1);
+
+    uint32_t A = 0x52000;
+    uint32_t B = A + 32 * 32;
+
+    c0->clear_trace();
+    c1->clear_trace();
+
+    c0->add_op(OpType::STORE, A, 100);   // M in c0
+    c0->add_op(OpType::STORE, B, 1);     // evict A (dirty writeback)
+    c1->add_op(OpType::STORE, A, 200);   // wants ownership while eviction pressure exists
+    c0->add_op(OpType::LOAD,  A);        // must see 200
+    c1->add_op(OpType::LOAD,  A);        // must see 200
+
+    sys.run(3500);
+
+    run_load_check(sys, 0, A, 200, 700);
+    run_load_check(sys, 1, A, 200, 700);
+    assert_line_invariants(sys, A, 2);
+
+    QUIET = false;
+    printf("[PASS] test32_dirty_eviction_while_other_core_requests_same_line_store\n");
+}
+void test33_two_address_same_set_cross_core_writeback_visibility_both_lines() {
+    QUIET = true;
+
+    System sys(3);
+    auto* c0 = sys.get_core(0);
+    auto* c1 = sys.get_core(1);
+    auto* c2 = sys.get_core(2);
+
+    uint32_t A = 0x53000;
+    uint32_t B = A + 32 * 32;
+    uint32_t C = A + 2 * 32 * 32;
+
+    c0->clear_trace();
+    c1->clear_trace();
+    c2->clear_trace();
+
+    c0->add_op(OpType::STORE, A, 7);     // M(A)=7
+    c0->add_op(OpType::STORE, B, 8);     // evict A possibly
+    c1->add_op(OpType::LOAD,  A);        // must see 7
+
+    c0->add_op(OpType::STORE, C, 9);     // evict B possibly
+    c2->add_op(OpType::LOAD,  B);        // must see 8
+
+    sys.run(5000);
+
+    run_load_check(sys, 1, A, 7, 700);
+    run_load_check(sys, 2, B, 8, 700);
+
+    assert_line_invariants(sys, A, 3);
+    assert_line_invariants(sys, B, 3);
+    assert_line_invariants(sys, C, 3);
+
+    QUIET = false;
+    printf("[PASS] test33_two_address_same_set_cross_core_writeback_visibility_both_lines\n");
+}
+void test34_four_core_scoreboard_fuzz_with_periodic_global_readback() {
+    QUIET = true;
+
+    const int N = 4;
+    System sys(N);
+    for (int i = 0; i < N; i++) sys.get_core(i)->clear_trace();
+
+    uint32_t base = 0x54000;
+    const int M = 12;
+    uint32_t addrs[M];
+    int expected[M];
+
+    for (int i = 0; i < M; i++) {
+        addrs[i] = base + (uint32_t)i * 32;
+        expected[i] = 0;
+    }
+
+    uint32_t seeds[N] = {0x12345678u, 0x9abcdef0u, 0x0badf00du, 0x31415926u};
+
+    for (int step = 0; step < 90; step++) {
+        for (int cid = 0; cid < N; cid++) {
+            uint32_t r = lcg_next(seeds[cid]);
+            int idx = (int)(r % M);
+            uint32_t a = addrs[idx];
+
+            if ((r >> 30) & 1u) {
+                int v = (int)((r ^ (cid * 0x13579bdu)) & 0xFF);
+                sys.get_core(cid)->add_op(OpType::STORE, a, v);
+                expected[idx] = v;
+            } else {
+                sys.get_core(cid)->add_op(OpType::LOAD, a);
+            }
+        }
+
+        sys.run(900);
+
+        if ((step % 10) == 0) {
+            for (int i = 0; i < M; i++) assert_line_invariants(sys, addrs[i], N);
+            for (int i = 0; i < M; i++) {
+                for (int cid = 0; cid < N; cid++) run_load_check(sys, cid, addrs[i], expected[i], 450);
+            }
+        }
+    }
+
+    for (int i = 0; i < M; i++) assert_line_invariants(sys, addrs[i], N);
+    for (int i = 0; i < M; i++) {
+        for (int cid = 0; cid < N; cid++) run_load_check(sys, cid, addrs[i], expected[i], 450);
+    }
+
+    QUIET = false;
+    printf("[PASS] test34_four_core_scoreboard_fuzz_with_periodic_global_readback\n");
+}
+void test35_six_core_two_hot_lines_max_contention_scoreboard() {
+    QUIET = true;
+
+    const int N = 6;
+    System sys(N);
+    for (int i = 0; i < N; i++) sys.get_core(i)->clear_trace();
+
+    uint32_t A = 0x55000;
+    uint32_t B = 0x55020;
+
+    int ea = 0;
+    int eb = 0;
+
+    for (int r = 0; r < 30; r++) {
+        int wa = r % N;
+        int wb = (r + 3) % N;
+
+        ea = 1000 + r;
+        eb = 2000 + r;
+
+        sys.get_core(wa)->add_op(OpType::STORE, A, ea);
+        sys.get_core(wb)->add_op(OpType::STORE, B, eb);
+
+        for (int cid = 0; cid < N; cid++) {
+            sys.get_core(cid)->add_op(OpType::LOAD, A);
+            sys.get_core(cid)->add_op(OpType::LOAD, B);
+        }
+
+        sys.run(2500);
+
+        for (int cid = 0; cid < N; cid++) run_load_check(sys, cid, A, ea, 500);
+        for (int cid = 0; cid < N; cid++) run_load_check(sys, cid, B, eb, 500);
+
+        assert_line_invariants(sys, A, N);
+        assert_line_invariants(sys, B, N);
+    }
+
+    QUIET = false;
+    printf("[PASS] test35_six_core_two_hot_lines_max_contention_scoreboard\n");
+}
+
+
+
+
+
+
 
 void run_all_tests() {
     printf("\n===== RUNNING ALL MESI TESTS =====\n");
@@ -933,6 +1168,12 @@ void run_all_tests() {
     test28_dirty_eviction_value_visibility();
     test29_upgrade_invalidation_value_timing();
 
-    
+    test30_six_core_single_line_store_storm_with_immediate_global_reads();
+    test31_three_way_upgrade_race_last_writer_wins_no_transient_dual_M();
+    test32_dirty_eviction_while_other_core_requests_same_line_store();
+    test33_two_address_same_set_cross_core_writeback_visibility_both_lines();
+    test34_four_core_scoreboard_fuzz_with_periodic_global_readback();
+    test35_six_core_two_hot_lines_max_contention_scoreboard();
+
     printf("\n===== ALL TESTS PASSED =====\n");
 }

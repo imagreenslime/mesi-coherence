@@ -16,7 +16,8 @@ class Memory;
 
 class Cache {
 public:
-    Cache(int id, Bus* bus_, Memory* mem_);
+    
+    Cache(int id, Bus* bus_, Memory* mem_); // each cache has access to main bus and memory
 
     void step();
 
@@ -25,9 +26,8 @@ public:
     SnoopResult snoop_and_update(const BusRequest& req);
     void on_bus_grant(const BusGrant& grant);
 
-
+    // helpers + validation
     void print_cache();
-
     char state_for(uint32_t addr);
     int id();
 private:
@@ -37,9 +37,18 @@ private:
     Bus* bus;
     bool waiting_for_bus;
 
+    int cache_id; 
+
+    bool busy;
+    int wait_cycles;
+
+    Core* owner_core;
+    MemOp current_op;
+
     static constexpr int LINE_SIZE = 32;
     static constexpr int NUM_LINES = 32;
     
+    // defines modified, exclusive, shared, and invalid
     enum class LineState {
         I,
         S,
@@ -54,28 +63,19 @@ private:
 
         CacheLine() : tag(0), state(LineState::I) {}
     };
-
     std::array<CacheLine, NUM_LINES> lines;
 
+    // helpers
     uint32_t line_addr(uint32_t addr) const {
         return addr & ~(LINE_SIZE - 1);
     }
-
     uint32_t index(uint32_t addr) const {
         return (addr/LINE_SIZE) % NUM_LINES;
     }
-
     uint32_t tag(uint32_t addr) const {
         return addr / (LINE_SIZE * NUM_LINES);
     }
 
-    int cache_id; 
-
-    bool busy;
-    int wait_cycles;
-
-    Core* owner_core;
-    MemOp current_op;
 };
 
 #endif

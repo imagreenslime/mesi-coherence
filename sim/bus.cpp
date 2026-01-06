@@ -1,4 +1,4 @@
-//bus.cpp
+// bus.cpp
 #include "bus.hpp"
 #include <iostream>
 

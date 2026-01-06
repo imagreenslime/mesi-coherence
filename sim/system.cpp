@@ -5,9 +5,10 @@
 #include "cache.cpp"
 #include "memory.cpp"
 #include "config.hpp"
+
 #include <cassert>
 #include <iostream>
-#include <cstring> // for memcpy
+#include <cstring> 
 
 System::System(int num_cores_)
     : cycle(0), num_cores(num_cores_), rr_next(0)

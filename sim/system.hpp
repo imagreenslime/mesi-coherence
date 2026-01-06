@@ -16,12 +16,12 @@ class System {
         System(int num_cores = 2);
         void run(uint32_t max_cycles);
 
+        // helpers and validation
         Core* get_core(int id);
         Cache* get_cache(int id);
-    
-    private:
-
         void assert_mesi(uint32_t addr);
+        
+    private:
 
         void step();
 

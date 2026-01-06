@@ -16,6 +16,7 @@ void Core::add_op(OpType type, uint32_t addr, uint32_t data) {
     trace.push_back({type, addr, data});
 }
 
+// is merely a placeholder
 void Core::step(){
     if (stalled) return;
 
@@ -43,6 +44,8 @@ bool Core::is_stalled() const {
 void Core::notify_complete(uint32_t load_data){
     if (pc < trace.size()) {
         if (trace[pc].type == OpType::LOAD) {
+
+            // for validation
             last_load_addr  = trace[pc].addr;
             last_load_value = load_data;
             has_load_value  = true;
