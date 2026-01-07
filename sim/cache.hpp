@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "core.hpp"
 #include "bus.hpp"
-
+#include "system.hpp"
 #include <array>
 struct SnoopResult {
     bool had_line = false;   // line existed in S/E/M
@@ -13,11 +13,11 @@ struct SnoopResult {
 };
 
 class Memory;
-
+class System;
 class Cache {
 public:
     
-    Cache(int id, Bus* bus_, Memory* mem_); // each cache has access to main bus and memory
+    Cache(int id, Bus* bus_, Memory* mem_, System* system); // each cache has access to main bus and memory
 
     void step();
 
@@ -29,12 +29,14 @@ public:
     // helpers + validation
     void print_cache();
     char state_for(uint32_t addr);
+    bool is_busy() const;
     int id();
 private:
 
+    System* system;
     Memory* memory;
-
     Bus* bus;
+    
     bool waiting_for_bus;
 
     int cache_id; 

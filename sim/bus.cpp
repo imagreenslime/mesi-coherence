@@ -21,3 +21,7 @@ bool Bus::step(BusGrant& granted){
     busy = false;
     return true;
 }
+
+bool Bus::is_busy() const {
+    return busy;
+}

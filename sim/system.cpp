@@ -17,8 +17,8 @@ System::System(int num_cores_)
     bus = new Bus();
 
     for (int i = 0; i < num_cores; i++){
-        cores.push_back(new Core(i));
-        caches.push_back(new Cache(i, bus, memory));
+        cores.push_back(new Core(i, this));
+        caches.push_back(new Cache(i, bus, memory, this));
     }
 }
 
@@ -26,10 +26,25 @@ void System::run(uint32_t max_cycles){
 
     for (cycle = 0; cycle < max_cycles; cycle++){
         step();
+        stats.cycles++;
+
+        if (is_done())
+            break;
+
     }
     for (auto* cache : caches) {
         cache->print_cache();
     }
+    double cpi = (double)stats.cycles / stats.instructions;
+    double bus_rdx_per_inst = (double)stats.bus_rdx / stats.instructions;
+    double stall_ratio = ((double)stats.stall_cycles / stats.cycles) / num_cores;
+    printf("\n --- DATA ANALYSIS --- \n");
+    printf("Cores: %d\n", num_cores);
+    printf("CPI: %.2f\n", cpi);
+    printf("BusRdX / inst: %.3f\n", bus_rdx_per_inst);
+    printf("Stall ratio: %.2f%%\n", 100.0 * stall_ratio);
+    printf("BusRd #: %i, BusRdX #: %i, BusUpgr #: %i\n", stats.bus_rd, stats.bus_rdx, stats.bus_upgr);
+    printf("Hits: %i, Misses: %i\n", stats.hits, stats.misses);
 }
 
 void System::step(){
@@ -47,6 +62,9 @@ void System::step(){
 
         Core* core = cores[k];
         Cache* cache = caches[k];
+        if (core->is_stalled()) {
+            record_stall_cycle();
+        }
 
         if (core->has_request() && !core->is_stalled()){
             if (cache->accept_request(core, core->current_op())){
@@ -59,7 +77,7 @@ void System::step(){
         
     }
     
-    // bus executes 1 request
+    // advance bus and allow snooping
     BusGrant grant;
     if (bus->step(grant)) {
 
@@ -106,6 +124,23 @@ Cache* System::get_cache(int id) {
     return caches[id];
 }
 
+bool System::is_done() {
+    for (auto* core : cores) {
+        if (!core->is_finished() || core->is_stalled())
+            return false;
+    }
+
+    for (auto* cache : caches) {
+        if (cache->is_busy())
+            return false;
+    }
+
+    if (bus->is_busy())
+        return false;
+
+    return true;
+}
+
 void System::assert_mesi(uint32_t addr){
     int m_count = 0;
     int e_count = 0;
@@ -128,4 +163,35 @@ void System::assert_mesi(uint32_t addr){
         exit(1);
     }
     
+}
+
+void System::record_instruction_retired() {
+    stats.instructions++;
+}
+
+void System::record_bus_rd() {
+    stats.bus_rd++;
+}
+
+void System::record_bus_rdx() {
+    stats.bus_rdx++;
+}
+
+void System::record_bus_upgr() {
+    stats.bus_upgr++;
+}
+
+void System::record_invalidation() {
+    stats.invalidations++;
+}
+
+void System::record_stall_cycle() {
+    stats.stall_cycles++;
+}
+
+void System::record_miss(){
+    stats.misses++;
+}
+void System::record_hit(){
+    stats.hits++;
 }

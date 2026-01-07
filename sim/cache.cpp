@@ -5,10 +5,11 @@
 #include "log.hpp"
 #include <iostream>
 
-Cache::Cache(int id, Bus* bus_, Memory* mem_)
+Cache::Cache(int id, Bus* bus_, Memory* mem_, System* system)
     : cache_id(id),
       bus(bus_),
       memory(mem_),
+      system(system),
       waiting_for_bus(false),
       busy(false),
       wait_cycles(0),
@@ -32,6 +33,7 @@ bool Cache::accept_request(Core* core, const MemOp& op){
 
     bool hit = (line.state != LineState::I) && (line.tag == t);
 
+    hit ? system->record_hit() : system->record_miss();
 
     busy = true;
     owner_core = core;
@@ -49,6 +51,7 @@ bool Cache::accept_request(Core* core, const MemOp& op){
             waiting_for_bus = true;
             wait_cycles = 0;
             BusRequest req{cache_id, BusReqType::BusRd, op.addr};
+            system->record_bus_rd();
             if (!bus->request(req)){
                 printf("Load Miss at Cache %i\n", cache_id);
                 busy = false;
@@ -71,6 +74,7 @@ bool Cache::accept_request(Core* core, const MemOp& op){
 
                 // invalidate others
                 BusRequest req{cache_id, BusReqType::BusUpgr, op.addr};
+                system->record_bus_upgr();
                 if (!bus->request(req)) {
                     printf("Store hit at Cache %i\n", cache_id);
                     busy = false;
@@ -81,6 +85,7 @@ bool Cache::accept_request(Core* core, const MemOp& op){
             // BusRdx
 
             BusRequest req{cache_id, BusReqType::BusRdX, op.addr};
+            system->record_bus_rdx();
             if (!bus->request(req)) {
                 printf("Store miss at Cache %i\n", cache_id);
                 busy = false;
@@ -149,12 +154,14 @@ SnoopResult Cache::snoop_and_update(const BusRequest& req){
         case (BusReqType::BusRdX):
             // if write
             printf("req type: BusRDX\n");
+            system->record_invalidation();
             line.state = LineState::I;
             break;
         case (BusReqType::BusUpgr):
             printf("req type: BusUPGR\n");
             // telling you to upgrade
             if (line.state == LineState::S){
+                system->record_invalidation();
                 line.state = LineState::I;
             }
             break;
@@ -237,6 +244,10 @@ void Cache::on_bus_grant(const BusGrant& grant){
 
 
 // HELPER COMMANDS
+bool Cache::is_busy() const {
+    return busy;
+}
+
 void Cache::print_cache(){
     printf("Cache %d:\n", cache_id);
     for (int i = 0; i < NUM_LINES; i++) {

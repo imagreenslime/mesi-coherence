@@ -3,6 +3,9 @@
 
 #include <cstdint>
 #include <vector>
+#include "system.hpp"
+
+class System;
 
 enum class OpType {
     LOAD,
@@ -17,7 +20,7 @@ struct MemOp {
 
 class Core {
     public:
-        Core(int id);
+        Core(int id, System* system);
 
         void clear_trace();
         void add_op(OpType type, uint32_t addr, uint32_t data = 0);
@@ -25,18 +28,21 @@ class Core {
         void step();
         void notify_complete(uint32_t load_data = 0);
 
-        bool has_request() const;
-
         MemOp current_op() const;
         
+        // checkers
         void stall();
         bool is_stalled() const;
+        bool is_finished() const;
+        bool has_request() const;
+
 
         uint32_t last_load_addr  = 0;
         uint32_t last_load_value = 0;
         bool     has_load_value  = false;
 
     private:
+        System* system;
         int core_id;
 
         std::vector<MemOp> trace;

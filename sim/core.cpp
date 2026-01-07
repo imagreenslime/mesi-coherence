@@ -2,8 +2,9 @@
 #include "core.hpp"
 #include <iostream>
 #include "log.hpp"
-Core::Core(int id)
-    : core_id(id), pc(0), stalled(false)
+#include "system.hpp"
+Core::Core(int id, System* system)
+    : core_id(id), pc(0), stalled(false), system(system)
 {}
 
 void Core::clear_trace() {
@@ -40,11 +41,14 @@ void Core::stall() {
 bool Core::is_stalled() const {
     return stalled;
 }
+bool Core::is_finished() const {
+    return pc >= trace.size();;
+}
 
 void Core::notify_complete(uint32_t load_data){
     if (pc < trace.size()) {
         if (trace[pc].type == OpType::LOAD) {
-
+            system->record_instruction_retired();
             // for validation
             last_load_addr  = trace[pc].addr;
             last_load_value = load_data;

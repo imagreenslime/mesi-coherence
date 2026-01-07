@@ -30,7 +30,7 @@ public:
     bool request(const BusRequest& req);
 
     bool step(BusGrant& granted);
-
+    bool is_busy() const;
 private:
     bool busy;
     BusRequest current;
