@@ -6,7 +6,7 @@
 
 int main(){
 
-    run_all_tests();
+    run_all_architectural_tests();
 
     return 0;
 }

@@ -62,6 +62,7 @@ class System {
         Memory* memory;
 
         bool is_done();
+        bool core_is_done(int i);
 };
 
 #endif

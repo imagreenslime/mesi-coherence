@@ -33,6 +33,9 @@ bool Core::has_request() const {
 MemOp Core::current_op() const {
     return trace[pc];
 }
+int Core::trace_size() const {
+    return trace.size();
+}
 
 void Core::stall() {
     stalled = true;
@@ -47,8 +50,9 @@ bool Core::is_finished() const {
 
 void Core::notify_complete(uint32_t load_data){
     if (pc < trace.size()) {
+        system->record_instruction_retired();
         if (trace[pc].type == OpType::LOAD) {
-            system->record_instruction_retired();
+    
             // for validation
             last_load_addr  = trace[pc].addr;
             last_load_value = load_data;

@@ -35,7 +35,7 @@ class Core {
         bool is_stalled() const;
         bool is_finished() const;
         bool has_request() const;
-
+        int trace_size() const;
 
         uint32_t last_load_addr  = 0;
         uint32_t last_load_value = 0;

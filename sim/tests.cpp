@@ -3,19 +3,116 @@
 #include <iostream>
 #include <cassert>
 #include <cstdio>
+#include <list>
 #include "log.cpp"
-#define TEST_START(n) do { QUIET = false;  printf(""); } while (0)
+#define TEST_START(n) do { QUIET = true;  printf(""); } while (0)
 #define TEST_PASS(n)  do { QUIET = false; printf("[PASS] test%d\n", n); } while (0)
 
+// architectural tests
+void test1_private_data() {
+    TEST_START(1);
+
+    System sys(2);
+    auto* c0 = sys.get_core(0);
+    auto* c1 = sys.get_core(1);
+
+    c0->clear_trace();
+    c1->clear_trace();
+
+    uint32_t A0 = 0x1000;
+    uint32_t A1 = 0x2000;
+
+    for (int i = 0; i < 10; i++) {
+        c0->add_op(OpType::STORE, A0, i);
+        c0->add_op(OpType::LOAD,  A0);
+
+        c1->add_op(OpType::STORE, A1, i);
+        c1->add_op(OpType::LOAD,  A1);
+    }
+
+    sys.run(500);
+    TEST_PASS(1);
+}
+
+void test2_read_only_sharing() {
+    TEST_START(2);
+
+    System sys(2);
+    auto* c0 = sys.get_core(0);
+    auto* c1 = sys.get_core(1);
+
+    c0->clear_trace();
+    c1->clear_trace();
+
+    uint32_t A = 0x3000;
+
+    for (int i = 0; i < 20; i++) {
+        c0->add_op(OpType::LOAD, A);
+        c1->add_op(OpType::LOAD, A);
+    }
+
+    sys.run(500);
+    TEST_PASS(2);
+}
+
+void test3_write_sharing_pingpong() {
+    TEST_START(3);
+
+    System sys(2);
+    auto* c0 = sys.get_core(0);
+    auto* c1 = sys.get_core(1);
+
+    c0->clear_trace();
+    c1->clear_trace();
+
+    uint32_t A = 0x4000;
+
+    for (int i = 0; i < 20; i++) {
+        c0->add_op(OpType::STORE, A, i);
+        c1->add_op(OpType::STORE, A, i + 1);
+    }
+
+    sys.run(800);
+    TEST_PASS(3);
+}
+
+void test_scaling_write_shared(int ncores) {
+    TEST_START(ncores);
+
+    System sys(ncores);
+
+    uint32_t A = 0x1000;
+
+    for (int i = 0; i < ncores; i++) {
+        auto* c = sys.get_core(i);
+        c->clear_trace();
+        for (int k = 0; k < 20; k++) {
+            c->add_op(OpType::STORE, A, k + i);
+        }
+    }
+
+    sys.run(5000);
+    TEST_PASS(ncores);
+}
+
+// even when all are misses 16 cores has CPI: 1.01, 2 cores has CPI: 2.52
+int cores[5] = {2, 4, 8, 16 ,32};
+
+void run_all_architectural_tests(){
+    
+    printf("\n===== RUNNING ALL MESI TESTS =====\n");
+    for (int i = 0; i < 5; i++){
+        test_scaling_write_shared(cores[i]);
+    }
+}
 // tier 1 tests -- Core MESI Correctness
 // Validates fundamental MESI state transitions and visibility rules under 
 // simple load/store interactions, ensuring correct sharing, invalidation, 
 // and dirty writeback behavior across cores.
 
 void test1_store_load() {
-    
+    QUIET = true;
     TEST_START(1);
-    QUIET = false;
     System sys(2);
     auto* c0 = sys.get_core(0);
     auto* c1 = sys.get_core(1);
@@ -35,9 +132,9 @@ void test1_store_load() {
 
     assert(s0 == 'S');
     assert(s1 == 'S');
-
-    QUIET = false;
     TEST_PASS(1);
+    QUIET = false;
+
 }
 void test2_upgrade() {
     TEST_START(2);
@@ -1126,23 +1223,17 @@ void test35_six_core_two_hot_lines_max_contention_scoreboard() {
     printf("[PASS] test35_six_core_two_hot_lines_max_contention_scoreboard\n");
 }
 
-
-
-
-
-
-
 void run_all_tests() {
     printf("\n===== RUNNING ALL MESI TESTS =====\n");
 
     test1_store_load();
-    /*
+    
     test2_upgrade();
     test3_dirty_eviction();
     test4_dual_miss();
     test5_write_write();
     test6_invalidate_then_read();
-
+    /*
     test7_exclusive_hit();
     test8_e_to_m();
     test9_ping_pong();
@@ -1178,3 +1269,5 @@ void run_all_tests() {
     */
     printf("\n===== ALL TESTS PASSED =====\n");
 }
+
+

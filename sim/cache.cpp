@@ -20,7 +20,7 @@ Cache::Cache(int id, Bus* bus_, Memory* mem_, System* system)
 // accept line from bus
 bool Cache::accept_request(Core* core, const MemOp& op){
     if (busy) return false;
-
+    
     uint32_t idx = index(op.addr);
     uint32_t t = tag(op.addr);
     CacheLine& line = lines[idx];
@@ -83,7 +83,7 @@ bool Cache::accept_request(Core* core, const MemOp& op){
             }
         } else {
             // BusRdx
-
+            waiting_for_bus = true;
             BusRequest req{cache_id, BusReqType::BusRdX, op.addr};
             system->record_bus_rdx();
             if (!bus->request(req)) {
@@ -91,7 +91,7 @@ bool Cache::accept_request(Core* core, const MemOp& op){
                 busy = false;
                 return false;
             }
-            waiting_for_bus = true;
+            
             wait_cycles = 0;
         }
     }
@@ -103,25 +103,29 @@ bool Cache::accept_request(Core* core, const MemOp& op){
 void Cache::step(){
     if (!busy) return;
     if (waiting_for_bus) return;
-    wait_cycles--;
+    if (wait_cycles > 0) {
+        wait_cycles--;
+        return;
+    }
 
-    if (wait_cycles == 0){
-        uint32_t idx = index(current_op.addr);
-        CacheLine& line = lines[idx];
 
-        if (current_op.type == OpType::LOAD){
-            uint32_t offset = current_op.addr % LINE_SIZE;
-            uint32_t val = line.data[offset];
-            owner_core->notify_complete(val);
-        } else {
-            uint32_t offset = current_op.addr % LINE_SIZE;
-            line.data[offset] = current_op.data;
-            owner_core->notify_complete();
-        }
+    
+    uint32_t idx = index(current_op.addr);
+    CacheLine& line = lines[idx];
+
+    if (current_op.type == OpType::LOAD){
+        uint32_t offset = current_op.addr % LINE_SIZE;
+        uint32_t val = line.data[offset];
+        owner_core->notify_complete(val);
+    } else {
+        uint32_t offset = current_op.addr % LINE_SIZE;
+        line.data[offset] = current_op.data;
+        owner_core->notify_complete();
+    }
 
         busy = false;
         owner_core = nullptr;   
-    }
+    
 }
 
 // other caches snoop load/store address

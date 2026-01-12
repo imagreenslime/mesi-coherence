@@ -9,6 +9,9 @@
 #include <cassert>
 #include <iostream>
 #include <cstring> 
+#include <vector>
+
+std::vector<int> per_core_counter;
 
 System::System(int num_cores_)
     : cycle(0), num_cores(num_cores_), rr_next(0)
@@ -20,6 +23,8 @@ System::System(int num_cores_)
         cores.push_back(new Core(i, this));
         caches.push_back(new Cache(i, bus, memory, this));
     }
+
+    per_core_counter.resize(num_cores, 0);
 }
 
 void System::run(uint32_t max_cycles){
@@ -27,7 +32,11 @@ void System::run(uint32_t max_cycles){
     for (cycle = 0; cycle < max_cycles; cycle++){
         step();
         stats.cycles++;
-
+        for (int i = 0; i < num_cores; i++) {
+            if (core_is_done(i) && per_core_counter[i] == 0){
+                per_core_counter[i] = cycle;
+            }
+        }
         if (is_done())
             break;
 
@@ -35,14 +44,24 @@ void System::run(uint32_t max_cycles){
     for (auto* cache : caches) {
         cache->print_cache();
     }
+
+    QUIET = false;
+    printf("\n --- DATA ANALYSIS --- \n");
+    for (int i = 0; i < num_cores; i++){
+        int core_cycles = per_core_counter[i];
+        int core_instructions = cores[i]->trace_size();
+        double core_cpi = (double)(core_cycles)/(double)(core_instructions);
+        printf("Core %i- CPI: %.2f, cycles: %i, trace size: %i\n", i, core_cpi, core_cycles, core_instructions);
+
+    }
     double cpi = (double)stats.cycles / stats.instructions;
     double bus_rdx_per_inst = (double)stats.bus_rdx / stats.instructions;
-    double stall_ratio = ((double)stats.stall_cycles / stats.cycles) / num_cores;
-    printf("\n --- DATA ANALYSIS --- \n");
+    double stall_ratio = ((double)stats.stall_cycles / stats.cycles);
     printf("Cores: %d\n", num_cores);
     printf("CPI: %.2f\n", cpi);
     printf("BusRdX / inst: %.3f\n", bus_rdx_per_inst);
-    printf("Stall ratio: %.2f%%\n", 100.0 * stall_ratio);
+    printf("Invalidations: %i\n", stats.invalidations);
+    printf("Avg stalled cores per cycle: %.2f\n", stall_ratio);
     printf("BusRd #: %i, BusRdX #: %i, BusUpgr #: %i\n", stats.bus_rd, stats.bus_rdx, stats.bus_upgr);
     printf("Hits: %i, Misses: %i\n", stats.hits, stats.misses);
 }
@@ -140,6 +159,19 @@ bool System::is_done() {
 
     return true;
 }
+
+bool System::core_is_done(int i) {
+
+    if (!cores[i]->is_finished() || cores[i]->is_stalled())
+            return false;
+    
+
+    if (caches[i]->is_busy())
+        return false;
+
+    return true;
+}
+
 
 void System::assert_mesi(uint32_t addr){
     int m_count = 0;

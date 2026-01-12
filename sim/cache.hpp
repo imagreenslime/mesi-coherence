@@ -36,7 +36,7 @@ private:
     System* system;
     Memory* memory;
     Bus* bus;
-    
+
     bool waiting_for_bus;
 
     int cache_id; 
